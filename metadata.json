@@ -1,0 +1,6 @@
+{
+  "name": "채용_면접 - 건설기술인 경력증명서 판독 및 면접 관리",
+  "description": "건설기술인 경력증명서와 이력서 판독, 근거 기반 원문 대조, 결정적 경력계산, 원본 서식 보존 면접대상자 관리표 및 12개월 면접일정 XLSX 생성 시스템",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
