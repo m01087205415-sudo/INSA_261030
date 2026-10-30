@@ -54,6 +54,140 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+import Holidays from 'date-holidays';
+
+// In-memory cache for holidays
+const holidayCache: Record<string, Record<string, string>> = {};
+
+// Public holidays endpoint (한국 공공데이터 포털 API 연동 지원 + date-holidays 라이브러리 및 법정선거일·대체공휴일 계산 엔진)
+app.get('/api/holidays', async (req, res) => {
+  try {
+    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()), 10);
+    const apiKey = process.env.DATA_GOV_KR_API_KEY;
+
+    if (holidayCache[year]) {
+      return res.json({ success: true, year, holidays: holidayCache[year], source: 'cache' });
+    }
+
+    const holidaysMap: Record<string, { name: string; type: string }> = {};
+
+    // 1. Korea Public Data Portal API (공공데이터포털 특일정보 API)
+    let fetchedFromPortal = false;
+    if (apiKey) {
+      try {
+        const portalUrl = `https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo?serviceKey=${encodeURIComponent(
+          apiKey
+        )}&solYear=${year}&numOfRows=100&_type=json`;
+        const portalRes = await fetch(portalUrl);
+        if (portalRes.ok) {
+          const portalJson = await portalRes.json();
+          const items = portalJson.response?.body?.items?.item;
+          const itemsArray = Array.isArray(items) ? items : items ? [items] : [];
+          for (const item of itemsArray) {
+            if (item.locdate && item.dateName) {
+              const str = String(item.locdate);
+              const formattedDate = `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+              holidaysMap[formattedDate] = { name: item.dateName, type: 'public_portal' };
+            }
+          }
+          if (itemsArray.length > 0) fetchedFromPortal = true;
+        }
+      } catch (e) {
+        console.warn('Public data portal API fetch error, falling back to library:', e);
+      }
+    }
+
+    // 2. date-holidays library computation for Korea (KR)
+    try {
+      const hd = new Holidays('KR');
+      const libHolidays = hd.getHolidays(year);
+      for (const h of libHolidays) {
+        if (h.type === 'public') {
+          const d = h.date.slice(0, 10);
+          if (!holidaysMap[d]) {
+            holidaysMap[d] = { name: h.name, type: 'statutory' };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('date-holidays calculation error:', e);
+    }
+
+    // 3. Official election days (공직선거법 제34조 임기만료 선거일)
+    const electionDays: Record<string, string> = {
+      '2024-04-10': '제22대 국회의원선거일',
+      '2026-06-03': '제9회 전국동시지방선거일',
+      '2027-03-03': '제21대 대통령선거일',
+      '2028-04-12': '제23대 국회의원선거일',
+    };
+    for (const [d, name] of Object.entries(electionDays)) {
+      if (d.startsWith(String(year))) {
+        holidaysMap[d] = { name, type: 'election' };
+      }
+    }
+
+    // 4. Korean traditional 3-day lunar holidays & substitute holidays
+    const knownLunarHolidays: Record<string, string> = {
+      '2024-02-09': '설날 연휴',
+      '2024-02-10': '설날',
+      '2024-02-11': '설날 연휴',
+      '2024-02-12': '대체공휴일(설날)',
+      '2024-09-16': '추석 연휴',
+      '2024-09-17': '추석',
+      '2024-09-18': '추석 연휴',
+      '2025-01-28': '설날 연휴',
+      '2025-01-29': '설날',
+      '2025-01-30': '설날 연휴',
+      '2025-10-05': '추석 연휴',
+      '2025-10-06': '추석',
+      '2025-10-07': '추석 연휴',
+      '2025-10-08': '대체공휴일(추석)',
+      '2026-02-16': '설날 연휴',
+      '2026-02-17': '설날',
+      '2026-02-18': '설날 연휴',
+      '2026-03-02': '대체공휴일(삼일절)',
+      '2026-05-25': '대체공휴일(부처님오신날)',
+      '2026-08-17': '대체공휴일(광복절)',
+      '2026-09-24': '추석 연휴',
+      '2026-09-25': '추석',
+      '2026-09-26': '추석 연휴',
+      '2026-10-05': '대체공휴일(개천절)',
+      '2027-02-06': '설날 연휴',
+      '2027-02-07': '설날',
+      '2027-02-08': '설날 연휴',
+      '2027-02-09': '대체공휴일(설날)',
+      '2027-08-16': '대체공휴일(광복절)',
+      '2027-09-14': '추석 연휴',
+      '2027-09-15': '추석',
+      '2027-09-16': '추석 연휴',
+      '2027-10-04': '대체공휴일(개천절)',
+      '2027-10-11': '대체공휴일(한글날)',
+      '2027-12-27': '대체공휴일(성탄절)',
+    };
+    for (const [d, name] of Object.entries(knownLunarHolidays)) {
+      if (d.startsWith(String(year))) {
+        holidaysMap[d] = { name, type: 'statutory_lunar' };
+      }
+    }
+
+    const simplified: Record<string, string> = {};
+    for (const [d, info] of Object.entries(holidaysMap)) {
+      simplified[d] = info.name;
+    }
+
+    holidayCache[year] = simplified;
+    return res.json({
+      success: true,
+      year,
+      holidays: simplified,
+      source: fetchedFromPortal ? 'portal_api' : 'library_calculation',
+    });
+  } catch (err: any) {
+    console.error('Holiday API error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Document analysis endpoint using Gemini 3.8 Flash
 app.post('/api/gemini/analyze', async (req, res) => {
   try {

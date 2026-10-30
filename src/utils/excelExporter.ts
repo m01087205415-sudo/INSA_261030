@@ -504,21 +504,26 @@ export async function generateMonthlyCalendarWorkbook(options: {
         const colLetter = cols[colIdx];
         const cell = ws.getCell(`${colLetter}${week.dateRowNumber}`);
         cell.value = day.dayNumber !== null ? day.dayNumber : '';
+        const isRedDate = day.isSunday || day.isHoliday;
         cell.font = {
           name: '맑은 고딕',
           size: 10,
           bold: true,
-          color: day.isSunday
-            ? { argb: 'FFFF0000' }
+          color: isRedDate
+            ? { argb: 'FFFF0000' } // 일요일 및 공휴일·대체공휴일·선거일 빨간색
             : day.isSaturday
-            ? { argb: 'FF0070C0' }
-            : { argb: 'FF000000' },
+            ? { argb: 'FF0070C0' } // 토요일 파란색
+            : { argb: 'FF000000' }, // 평일 검정색
         };
         cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'FFF9FAFB' },
+          fgColor: {
+            argb: isRedDate
+              ? (day.isHoliday ? 'FFFFE8E8' : 'FFFFF0F0') // 공휴일·대체공휴일·선거일 및 일요일 부드러운 빨간색/분홍빛 배경
+              : 'FFF9FAFB',
+          },
         };
         cell.border = {
           top: { style: 'thin', color: { argb: BORDER_COLOR_GRAY } },

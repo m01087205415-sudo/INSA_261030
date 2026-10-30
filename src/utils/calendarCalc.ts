@@ -1,4 +1,5 @@
 import { InterviewRecord, CalendarMonthSheet } from '../types';
+import { getKoreanHoliday } from './holidays';
 
 /**
  * Format time string into standard KOCEA interview schedule notation:
@@ -91,6 +92,8 @@ export interface CalendarCell {
   dateStr: string | null; // YYYY-MM-DD
   isSunday: boolean;
   isSaturday: boolean;
+  isHoliday: boolean; // 공휴일·대체공휴일·선거일 여부
+  holidayName?: string; // 공휴일 명칭
   slots: Array<{
     recordId: string;
     text: string;
@@ -173,12 +176,14 @@ export function generateMonthCalendarGrid(
           dateStr: null,
           isSunday: col === 0,
           isSaturday: col === 6,
+          isHoliday: false,
           slots: [],
           hasOverflow: false,
           overflowCount: 0,
         });
       } else {
         const dateStr = `${yearMonth}-${String(currentDay).padStart(2, '0')}`;
+        const holidayInfo = getKoreanHoliday(dateStr);
         const dayRecords = recordsByDate[dateStr] || [];
 
         const slots = dayRecords.slice(0, 4).map((rec) => {
@@ -210,6 +215,8 @@ export function generateMonthCalendarGrid(
           dateStr,
           isSunday: col === 0,
           isSaturday: col === 6,
+          isHoliday: Boolean(holidayInfo?.isHoliday),
+          holidayName: holidayInfo?.name,
           slots,
           hasOverflow: overflowCount > 0,
           overflowCount,

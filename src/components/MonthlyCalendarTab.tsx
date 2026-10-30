@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar as CalendarIcon,
   Download,
@@ -20,6 +20,7 @@ import {
   formatInterviewTime,
   buildScheduleDisplayText,
 } from '../utils/calendarCalc';
+import { preloadPublicHolidays } from '../utils/holidays';
 
 interface MonthlyCalendarTabProps {
   records: InterviewRecord[];
@@ -41,6 +42,14 @@ export const MonthlyCalendarTab: React.FC<MonthlyCalendarTabProps> = ({
   }, [settings.basisMonth]);
 
   const [activeMonth, setActiveMonth] = useState<string>(settings.basisMonth);
+
+  // Preload holiday data from public data API / computation engine
+  useEffect(() => {
+    const [y] = activeMonth.split('-');
+    const yearNum = parseInt(y, 10);
+    preloadPublicHolidays(yearNum);
+    preloadPublicHolidays(yearNum - 1);
+  }, [activeMonth]);
 
   // Month calendar grid calculation
   const calendarGrid = useMemo(() => {
@@ -202,26 +211,41 @@ export const MonthlyCalendarTab: React.FC<MonthlyCalendarTabProps> = ({
             {calendarGrid.weeks.map((week) => (
               <div key={week.weekIndex} className="border-b border-slate-300">
                 {/* Date numbers row (행 4, 9, 14, 19, 24, 29) */}
-                <div className="grid grid-cols-7 bg-slate-50/80 border-b border-slate-200 text-xs font-bold">
-                  {week.days.map((day, idx) => (
-                    <div
-                      key={idx}
-                      className={`px-2 py-1 border-r border-slate-200 last:border-r-0 flex items-center justify-between ${
-                        day.isSunday
-                          ? 'text-red-600'
-                          : day.isSaturday
-                          ? 'text-[#0070C0]'
-                          : 'text-slate-800'
-                      }`}
-                    >
-                      <span>{day.dayNumber !== null ? day.dayNumber : ''}</span>
-                      {day.hasOverflow && (
-                        <span className="text-[10px] px-1 bg-amber-500 text-white rounded font-mono">
-                          +{day.overflowCount}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                <div className="grid grid-cols-7 border-b border-slate-200 text-xs font-bold">
+                  {week.days.map((day, idx) => {
+                    const isRedDay = day.isSunday || day.isHoliday;
+                    return (
+                      <div
+                        key={idx}
+                        className={`px-2 py-1 border-r border-slate-200 last:border-r-0 flex items-center justify-between transition-colors ${
+                          day.isHoliday
+                            ? 'bg-rose-50 text-red-600 font-bold'
+                            : day.isSunday
+                            ? 'bg-red-50/50 text-red-600 font-bold'
+                            : day.isSaturday
+                            ? 'bg-slate-50/80 text-[#0070C0]'
+                            : 'bg-slate-50/80 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-bold">{day.dayNumber !== null ? day.dayNumber : ''}</span>
+                          {day.holidayName && (
+                            <span
+                              className="text-[10px] bg-red-100 text-red-700 px-1 py-0.2 rounded font-medium truncate max-w-[85px] border border-red-200"
+                              title={day.holidayName}
+                            >
+                              {day.holidayName}
+                            </span>
+                          )}
+                        </div>
+                        {day.hasOverflow && (
+                          <span className="text-[10px] px-1 bg-amber-500 text-white rounded font-mono">
+                            +{day.overflowCount}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Content Rows: 4 slots per day (행 5~8, 10~13 등) */}
